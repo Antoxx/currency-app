@@ -5,6 +5,10 @@
         "name": "App Settings",
         "type": "bundled",
         "content": "frontend/settings.html"
+    },{
+        "name": "Rules",
+        "type": "bundled",
+        "content": "frontend/rules.html"
     }],
     "permissions": ["stream", "profile.update", "profile.read", "app.read.own"],
     "runtime": {
