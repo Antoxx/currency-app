@@ -12,14 +12,16 @@
             "id": "rule",
             "properties": {
                 "name": {
-                    "title": "Name:",
+                    "title": "Name",
                     "type": "string",
                     "minLength": 2,
-                    "default": "Rule"
+                    "default": "Rule",
+                    "propertyOrder": 1
                 },
                 "event": {
-                    "title": "Subscribe to event of type:",
-                    "type": "string"
+                    "title": "Subscribe to event of type",
+                    "type": "string",
+                    "propertyOrder": 2
                 },
                 "ruleSettings": {
                     "type": "object",
@@ -32,31 +34,41 @@
                                 "dev", "prod"
                             ]
                         }
-                    }
+                    },
+                    "propertyOrder": 3
                 },
                 "fieldSets": {
                     "type": "array",
-                    "format": "table",
+                    //"format": "table",
                     "title": "Fieldsets",
+                    //"headerTemplate": " ",
                     //"uniqueItems": true,
                     "items": {
-                        //"title": "Mapping",
+                        "headerTemplate": "{{self.setName}}",
                         "type": "object",
                         "properties": {
                             "setName": {
                                 "type": "string",
                                 "title": "Name",
-                                "readOnly": true
+                                "readOnly": true,
+                                "options": {
+                                    "hidden": true
+                                }                                
                             },
                             "fields": {
                                 "type": "array",
-                                "format": "table",
+                                //"format": "table",
                                 "title": "Fields",
                                 "items": {
                                     "type": "object",
+                                    "headerTemplate": "{{self.fieldName}}",
                                     "properties": {
                                         "fieldName": {
-                                            "type": "string"
+                                            "type": "string",
+                                            "options": {
+                                                "hidden": true
+                                            },                                            
+                                            "propertyOrder": 1
                                         },
                                         "type": {
                                             "type": "string",
@@ -68,24 +80,38 @@
                                                 "meta",
                                                 "static"
                                             ],
-                                            "default": "static"
+                                            "default": "static",
+                                            "options": {
+                                                "enum_titles": [
+                                                    "Profile Attribute",
+                                                    "Session Data",
+                                                    "Event Data",
+                                                    "Macro",
+                                                    "Meta",
+                                                    "Static"
+                                                ]
+                                            },
+                                            "propertyOrder": 2
                                         },
                                         "fieldSettings": {
                                             "type": "string",
                                             "default": null,
                                             "options": {
                                                 "hidden": true
-                                            }
+                                            },
+                                            "propertyOrder": 3
                                         },
                                         "valueRef": {
                                             "type": "string",
                                             "default": null,
                                             "options": {
                                                 "hidden": true
-                                            }
+                                            },
+                                            "propertyOrder": 4
                                         },
                                         "value": {
-                                            "type": "string"
+                                            "type": "string",
+                                            "propertyOrder": 3
                                         }
                                     },
                                     "required": ["fieldName", "type"]
@@ -96,8 +122,11 @@
                     "options": {
                         "disable_array_add": true,
                         "disable_array_delete": true
-                    }
-                },
+                    },
+                    "propertyOrder": 4
+                }
+            },
+            "options": {
                 "disable_array_add": true,
                 "disable_array_delete": true                
             },
@@ -142,7 +171,38 @@
         "name":""
     };
     
-    var profileAttributes, sessionDatas, eventDefinitions, rules;
+    var mappingTypeValues = {
+        profileAttribute: [],
+        sessionValue: [],
+        eventValue: [],
+        macro: [
+            'timestamp_now','request_ip','user_agent','profileId' //'Timestamp','Request IP','User-agent','Profile ID'
+        ],
+        meta: [
+            'company_id','bucket_id','event_def_id','app_section_event','collect_app','section' //'Company ID','Bucket ID','Event definition ID','Event with scope','Collect app','Section',            
+        ],
+        event: []
+    };
+    var rules;
+    
+    var changeEnumValues = function (path, enumValues) {
+        var oldField = editor.getEditor(path);
+        var fieldName = oldField.key;
+        var parent = oldField.parent;
+
+        oldField.destroy();
+
+        delete parent.editors[fieldName];
+        delete parent.cached_editors[fieldName];
+        
+        if (enumValues) {
+            parent.schema.properties[fieldName].enum = enumValues;
+        } else {
+            delete parent.schema.properties[fieldName].enum;
+        }
+
+        parent.addObjectProperty(fieldName);
+    };
 
     /**
      * JSON Schema -> HTML Editor
@@ -160,8 +220,50 @@
         required_by_default: true,
         theme: 'bootstrap3'
     });
-    editor.watch('change', function () {
-        debugger;
+    editor.on('change', function () {
+        var mappingTypeRegexp = /^root\.\d+\.fieldSets\.\d+\.fields\.\d+\.type$/;
+        var editors = editor.editors;
+        var path, typeField, newValue, enumValues, oldEnumValues;
+        for (path in editors) {
+            if (!mappingTypeRegexp.test(path)) {
+                continue;
+            }
+            
+            typeField = editor.getEditor(path);
+            newValue = typeField.getValue();
+            if (!typeField.oldValue) {
+                typeField.oldValue = newValue;
+                continue;
+            }
+            
+            oldEnumValues = typeField.schema.enum;
+            enumValues = mappingTypeValues[newValue];
+            if ('' + oldEnumValues === '' + enumValues) {
+                continue;
+            }
+            
+            changeEnumValues(typeField.parent.path + '.value', enumValues);
+            typeField.oldValue = newValue;
+        }
+    });
+    editor.watch('root.0.event', function () {
+        var eventField = editor.getEditor('root.0.event');
+        var event = eventField.getValue();
+        var parts, appId, sectionId, eventId;
+        if (event) {
+            parts = event.split('/');
+            appId = parts[0];
+            sectionId = parts[1];
+            eventId = parts[2];
+            
+            inno.getProfileSchemaSessionDatas(appId, sectionId, function (els) {
+                mappingTypeValues.sessionValue = els;
+            });        
+            
+            inno.getProfileSchemaEventDefinitionDatas(appId, sectionId, eventId, function (els) {
+                mappingTypeValues.eventValue = els;
+            });        
+        }
     });
 
     // Init loader
@@ -171,27 +273,20 @@
     // Init IframeHelper
     var inno = new IframeHelper();
     inno.onReady(function () {
-        inno.getRules(function (status, els) {
+        inno.getRules(function (success, els) {
             rules = els;
             
+            editor.setValue(rules);
+            
             inno.getProfileSchemaAttributes(function (els) {
-                profileAttributes = els;
+                mappingTypeValues.profileAttribute = els;
 
-                inno.getProfileSchemaSessionDatas(function (els) {
-                    sessionDatas = els;
+                inno.getProfileSchemaEventDefinitions(function (els) {
+                    mappingTypeValues.event = els;
 
-                    inno.getProfileSchemaEventDefinitions(function (els) {
-                        eventDefinitions = els;
+                    changeEnumValues('root.0.event', els);
 
-                        setInterval(function () {
-                            var list = ['1', '2', '3'];
-                            console.log(profileAttributes, rules, editor);
-                            debugger;
-                        }, 4000);
-                        
-                        //editor.setValue({});
-                        loader.hide();
-                    });
+                    loader.hide();
                 });
             });
         });
@@ -209,10 +304,10 @@
             alert(errors.join('\n'));
         } else {
             loader.show();
-            inno.setProperties(editor.getValue(), function (status) {
+            inno.setRules(editor.getValue(), function (success) {
                 loader.hide();
-                if (status) {
-                    alert('Settings were saved.');
+                if (success) {
+                    alert('Rules were successfully saved.');
                 }
             });
         }
