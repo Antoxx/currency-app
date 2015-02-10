@@ -11,6 +11,12 @@
             "type": "object",
             "id": "rule",
             "properties": {
+                "id": {
+                    "type": "string",
+                    "options": {
+                        "hidden": true
+                    }  
+                },                
                 "name": {
                     "title": "Name",
                     "type": "string",
@@ -183,13 +189,55 @@
         ],
         event: []
     };
-    var rules;
     
+    var changeEvent = function (path) {
+        var eventField = editor.getEditor(path);
+        var newValue = eventField.getValue();
+        var parts, appId, sectionId, eventId;
+        
+        if (!eventField.oldValue || !newValue) {
+            return;
+        }
+        
+        parts = newValue.split('/');
+        appId = parts[0];
+        sectionId = parts[1];
+        eventId = parts[2];
+
+        inno.getProfileSchemaSessionDatas(appId, sectionId, function (els) {
+            mappingTypeValues.sessionValue = els;
+        });        
+
+        inno.getProfileSchemaEventDefinitionDatas(appId, sectionId, eventId, function (els) {
+            mappingTypeValues.eventValue = els;
+        });
+        
+        eventField.oldValue = newValue;
+    };
+    var changeMappingTypeAndValue = function (path) {
+        var typeField, newValue, enumValues, oldEnumValues;
+        typeField = editor.getEditor(path);
+        newValue = typeField.getValue();
+        if (!typeField.oldValue) {
+            typeField.oldValue = newValue;
+            return;
+        }
+
+        oldEnumValues = typeField.schema.enum;
+        enumValues = mappingTypeValues[newValue];
+        if ('' + oldEnumValues === '' + enumValues) {
+            return;
+        }
+
+        changeEnumValues(typeField.parent.path + '.value', enumValues);
+        typeField.oldValue = newValue;
+    };
     var changeEnumValues = function (path, enumValues) {
         var oldField = editor.getEditor(path);
+        var oldValue = oldField.getValue();
         var fieldName = oldField.key;
         var parent = oldField.parent;
-
+        
         oldField.destroy();
 
         delete parent.editors[fieldName];
@@ -202,69 +250,17 @@
         }
 
         parent.addObjectProperty(fieldName);
+        
+        var newField = editor.getEditor(path);
+        var newValue = enumValues && enumValues.indexOf(oldValue) !== -1 ? oldValue : '';
+        newField.setValue(newValue);
     };
 
     /**
      * JSON Schema -> HTML Editor
      * https://github.com/jdorn/json-editor/
      */
-    var editor = new JSONEditor($('#form-setting')[0], {
-        disable_collapse: true,
-        disable_edit_json: true,
-        disable_properties: true,
-        disable_array_reorder: true,
-        no_additional_properties: true,
-        schema: propertiesSchema,
-        startval: ruleDefaultValues,
-        required: [],
-        required_by_default: true,
-        theme: 'bootstrap3'
-    });
-    editor.on('change', function () {
-        var mappingTypeRegexp = /^root\.\d+\.fieldSets\.\d+\.fields\.\d+\.type$/;
-        var editors = editor.editors;
-        var path, typeField, newValue, enumValues, oldEnumValues;
-        for (path in editors) {
-            if (!mappingTypeRegexp.test(path)) {
-                continue;
-            }
-            
-            typeField = editor.getEditor(path);
-            newValue = typeField.getValue();
-            if (!typeField.oldValue) {
-                typeField.oldValue = newValue;
-                continue;
-            }
-            
-            oldEnumValues = typeField.schema.enum;
-            enumValues = mappingTypeValues[newValue];
-            if ('' + oldEnumValues === '' + enumValues) {
-                continue;
-            }
-            
-            changeEnumValues(typeField.parent.path + '.value', enumValues);
-            typeField.oldValue = newValue;
-        }
-    });
-    editor.watch('root.0.event', function () {
-        var eventField = editor.getEditor('root.0.event');
-        var event = eventField.getValue();
-        var parts, appId, sectionId, eventId;
-        if (event) {
-            parts = event.split('/');
-            appId = parts[0];
-            sectionId = parts[1];
-            eventId = parts[2];
-            
-            inno.getProfileSchemaSessionDatas(appId, sectionId, function (els) {
-                mappingTypeValues.sessionValue = els;
-            });        
-            
-            inno.getProfileSchemaEventDefinitionDatas(appId, sectionId, eventId, function (els) {
-                mappingTypeValues.eventValue = els;
-            });        
-        }
-    });
+    var editor;
 
     // Init loader
     var loader = new Loader();
@@ -274,17 +270,54 @@
     var inno = new IframeHelper();
     inno.onReady(function () {
         inno.getRules(function (success, els) {
-            rules = els;
-            
-            editor.setValue(rules);
+            var rules = [];
+            els.forEach(function (rule) {
+                rules.push(
+                    $.extend(true, {}, ruleDefaultValues, rule)
+                );
+            });
             
             inno.getProfileSchemaAttributes(function (els) {
                 mappingTypeValues.profileAttribute = els;
 
                 inno.getProfileSchemaEventDefinitions(function (els) {
                     mappingTypeValues.event = els;
+                    
+                    propertiesSchema.items.properties.event.enum = els;
+                    
+                    editor = new JSONEditor($('#form-setting')[0], {
+                        disable_collapse: true,
+                        disable_edit_json: true,
+                        disable_properties: true,
+                        disable_array_reorder: true,
+                        no_additional_properties: true,
+                        schema: propertiesSchema,
+                        startval: ruleDefaultValues,
+                        required: [],
+                        required_by_default: true,
+                        theme: 'bootstrap3'
+                    });
+                    editor.on('change', function () {
+                        var eventRegexp = /^root\.\d+\.event$/;
+                        var mappingTypeRegexp = /^root\.\d+\.fieldSets\.\d+\.fields\.\d+\.type$/;
+                        var editors = editor.editors;
+                        var path;
+                        for (path in editors) {
+                            if (eventRegexp.test(path)) {
+                                changeEvent(path);
+                            }
 
-                    changeEnumValues('root.0.event', els);
+                            if (mappingTypeRegexp.test(path)) {
+                                changeMappingTypeAndValue(path);
+                            }
+                        }
+                    });  
+                    
+                    editor.setValue(rules);
+                    
+//                    rules.forEach(function (rule, idx) {
+//                        changeEnumValues('root.' + idx + '.event', els);
+//                    });
 
                     loader.hide();
                 });
