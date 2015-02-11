@@ -13,6 +13,7 @@
             "properties": {
                 "id": {
                     "type": "string",
+                    "default": null,
                     "options": {
                         "hidden": true
                     }  
@@ -63,21 +64,21 @@
                             },
                             "fields": {
                                 "type": "array",
-                                //"format": "table",
+                                //"format": "table", // bug: new property will be added after buttons <td>
                                 "title": "Fields",
                                 "items": {
                                     "type": "object",
-                                    "headerTemplate": "{{self.fieldName}}",
+                                    //"headerTemplate": "{{self.fieldName}}",
+                                    "title": "Field" ,
                                     "properties": {
                                         "fieldName": {
                                             "type": "string",
-                                            "options": {
-                                                "hidden": true
-                                            },                                            
+                                            "title": "Name",
                                             "propertyOrder": 1
                                         },
                                         "type": {
                                             "type": "string",
+                                            "title": "Type",
                                             "enum": [
                                                 "profileAttribute",
                                                 "sessionValue",
@@ -117,7 +118,8 @@
                                         },
                                         "value": {
                                             "type": "string",
-                                            "propertyOrder": 3
+                                            "title": "Value",
+                                            "propertyOrder": 5
                                         }
                                     },
                                     "required": ["fieldName", "type"]
@@ -182,16 +184,22 @@
         sessionValue: [],
         eventValue: [],
         macro: [
-            'timestamp_now','request_ip','user_agent','profileId' //'Timestamp','Request IP','User-agent','Profile ID'
+            ['timestamp_now','request_ip','user_agent','profileId'],
+            ['Timestamp','Request IP','User-agent','Profile ID']
         ],
         meta: [
-            'company_id','bucket_id','event_def_id','app_section_event','collect_app','section' //'Company ID','Bucket ID','Event definition ID','Event with scope','Collect app','Section',            
+            ['company_id','bucket_id','event_def_id','app_section_event','collect_app','section'],
+            ['Company ID','Bucket ID','Event definition ID','Event with scope','Collect app','Section']
         ],
         event: []
     };
     
     var changeEvent = function (path) {
         var eventField = editor.getEditor(path);
+        if (!eventField) {
+            return;
+        }
+        
         var newValue = eventField.getValue();
         var parts, appId, sectionId, eventId;
         
@@ -205,31 +213,38 @@
         eventId = parts[2];
 
         inno.getProfileSchemaSessionDatas(appId, sectionId, function (els) {
-            mappingTypeValues.sessionValue = els;
+            mappingTypeValues.sessionValue = prepareEls(els);
         });        
 
         inno.getProfileSchemaEventDefinitionDatas(appId, sectionId, eventId, function (els) {
-            mappingTypeValues.eventValue = els;
+            mappingTypeValues.eventValue = prepareEls(els);
         });
         
         eventField.oldValue = newValue;
     };
     var changeMappingTypeAndValue = function (path) {
-        var typeField, newValue, enumValues, oldEnumValues;
+        var typeField, newValue, enumValues;
         typeField = editor.getEditor(path);
+        if (!typeField) {
+            return;
+        }
+        
         newValue = typeField.getValue();
         if (!typeField.oldValue) {
             typeField.oldValue = newValue;
+        }
+        
+        var valuePath = typeField.parent.path + '.value';
+        var valueField = editor.getEditor(valuePath);
+        var oldEnumValues = '' + valueField.schema.enum;
+        var newEnumValues = mappingTypeValues[newValue];
+        
+        // if type was not changed and select options are the same GO OUT
+        if (typeField.oldValue === newValue && (oldEnumValues === '' + newEnumValues || oldEnumValues === '' + newEnumValues[0])) {
             return;
         }
 
-        oldEnumValues = typeField.schema.enum;
-        enumValues = mappingTypeValues[newValue];
-        if ('' + oldEnumValues === '' + enumValues) {
-            return;
-        }
-
-        changeEnumValues(typeField.parent.path + '.value', enumValues);
+        changeEnumValues(valuePath, newEnumValues);
         typeField.oldValue = newValue;
     };
     var changeEnumValues = function (path, enumValues) {
@@ -243,17 +258,84 @@
         delete parent.editors[fieldName];
         delete parent.cached_editors[fieldName];
         
+        var fieldSchema = parent.schema.properties[fieldName];
         if (enumValues) {
-            parent.schema.properties[fieldName].enum = enumValues;
+            fieldSchema.enum = enumValues[0] || enumValues;
+            if (!fieldSchema.options) {
+                fieldSchema.options = {};
+            }
+            
+            fieldSchema.options.enum_titles = enumValues[1];
         } else {
-            delete parent.schema.properties[fieldName].enum;
+            delete fieldSchema.enum;
         }
 
         parent.addObjectProperty(fieldName);
         
         var newField = editor.getEditor(path);
-        var newValue = enumValues && enumValues.indexOf(oldValue) !== -1 ? oldValue : '';
+        var newValue = enumValues && enumValues.indexOf(oldValue) === -1 ? '' : oldValue;
         newField.setValue(newValue);
+    };
+    var prepareEls = function (els) {
+        var newEls = [[], []];
+        els.forEach(function (el) {
+            newEls[0].push(el);
+            newEls[1].push(el.split('/').join(' / '));
+        });
+        return newEls;
+    };
+    
+    /**
+     * Complete new rule with default values
+     */
+    var completeRule = function (rules) {
+        rules = rules || editor.getValue();
+        var newRules = [];
+        if (!editor.savedValue || editor.savedValue.length < rules.length) {
+            rules.forEach(function (rule) {
+                newRules.push(
+                    $.extend(true, {}, ruleDefaultValues, rule)
+                );
+            });
+
+            editor.setValue(newRules);
+        }
+        
+        editor.savedValue = newRules.length ? newRules : rules;
+        
+        // empty row cache
+        if (!rules.length) {
+            editor.getEditor('root').empty(true);
+        }
+    };
+    /**
+     * Fix predefined fields
+     */
+    var fixPredefinedFields = function () {
+        var rules = editor.getValue();
+        
+        // remove controls from predefined fields
+        rules.forEach(function (rule, ruleIdx) {
+            ruleDefaultValues.fieldSets.forEach(function (fs, fsIdx) {
+                var fieldPath = ['root', ruleIdx, 'fieldSets', fsIdx, 'fields'].join('.');
+                var field = editor.getEditor(fieldPath);
+                if (field) {
+                    field.delete_last_row_button.style.display = 'none';
+                    field.remove_all_rows_button.style.display = 'none';
+                }
+
+                fs.fields.forEach(function (f, fIdx) {
+                    var fieldPath = ['root', ruleIdx, 'fieldSets', fsIdx, 'fields', fIdx].join('.');
+                    var field = editor.getEditor(fieldPath);
+                    if (field) {
+                        field.delete_button.style.display = 'none';
+                    }
+                    
+                    // readonly for predefined fields names
+                    field.editors.fieldName.input.readOnly = true;
+                });
+            });
+        });
     };
 
     /**
@@ -269,21 +351,26 @@
     // Init IframeHelper
     var inno = new IframeHelper();
     inno.onReady(function () {
-        inno.getRules(function (success, els) {
-            var rules = [];
-            els.forEach(function (rule) {
-                rules.push(
-                    $.extend(true, {}, ruleDefaultValues, rule)
-                );
-            });
+        inno.getRules(function (success, rules) {
+            if (!success) {
+                alert('Rules were not loaded due to error. Please reload screen.');
+                return;
+            }
             
             inno.getProfileSchemaAttributes(function (els) {
-                mappingTypeValues.profileAttribute = els;
+                mappingTypeValues.profileAttribute = prepareEls(els);
 
                 inno.getProfileSchemaEventDefinitions(function (els) {
-                    mappingTypeValues.event = els;
+                    var newEls = prepareEls(els);
+                    var eventSchema = propertiesSchema.items.properties.event;
                     
-                    propertiesSchema.items.properties.event.enum = els;
+                    mappingTypeValues.event = newEls;
+                    
+                    eventSchema.enum = newEls[0];
+                    if (!eventSchema.options) {
+                        eventSchema.options = {};
+                    }
+                    eventSchema.options.enum_titles = newEls[1];
                     
                     editor = new JSONEditor($('#form-setting')[0], {
                         disable_collapse: true,
@@ -292,7 +379,7 @@
                         disable_array_reorder: true,
                         no_additional_properties: true,
                         schema: propertiesSchema,
-                        startval: ruleDefaultValues,
+                        //startval: ruleDefaultValues,
                         required: [],
                         required_by_default: true,
                         theme: 'bootstrap3'
@@ -311,14 +398,14 @@
                                 changeMappingTypeAndValue(path);
                             }
                         }
-                    });  
+                        
+                        completeRule();
+                        fixPredefinedFields();
+                    });
                     
-                    editor.setValue(rules);
+                    completeRule(rules);
+                    fixPredefinedFields();
                     
-//                    rules.forEach(function (rule, idx) {
-//                        changeEnumValues('root.' + idx + '.event', els);
-//                    });
-
                     loader.hide();
                 });
             });
