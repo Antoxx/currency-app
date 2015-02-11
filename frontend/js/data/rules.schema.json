@@ -1,8 +1,0 @@
-{
-    "currency": {
-        "title": "Currency",
-        "type": "string",
-        "enum": ["USD", "EUR"],
-        "default": "USD"
-    }
-}
