@@ -29,6 +29,10 @@
             "value": null,
             "fieldName": "email_deliverability_status"
         }]
+    }, {
+        "setName": "mapping",
+        "fields": [
+        ]
     }], 
     "event": "",
     "name": ""

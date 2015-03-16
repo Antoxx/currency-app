@@ -43,6 +43,7 @@
             "fieldSets": {
                 "type": "array",
                 "title": "Fieldsets",
+                "format": "table",
                 "items": {
                     "headerTemplate": "{{self.setName}}",
                     "type": "object",
@@ -58,9 +59,10 @@
                         "fields": {
                             "type": "array",
                             "title": "Fields",
+                            "format": "table",  
                             "items": {
                                 "type": "object",
-                                "title": "Field" ,
+                                "title": "Field",
                                 "properties": {
                                     "fieldName": {
                                         "type": "string",
@@ -119,6 +121,7 @@
                     }
                 },
                 "options": {
+                    "compact": true,
                     "disable_array_add": true,
                     "disable_array_delete": true
                 },

@@ -157,7 +157,7 @@
         
         var valuePath = typeField.parent.path + '.value';
         var valueField = editor.getEditor(valuePath);
-        var oldEnumValues = '' + valueField.schema.enum;
+        var oldEnumValues = '' + (valueField.schema.enum || valueField.schema.enum_options);
         var newEnumValues = mappingTypeValues[newValue];
         
         // if type was not changed and select options are the same GO OUT
@@ -173,9 +173,10 @@
         var oldValue = oldField.getValue();
         var fieldName = oldField.key;
         var parent = oldField.parent;
+        var nextFieldCnt = oldField.container.nextSibling;
         
         oldField.destroy();
-
+        
         delete parent.editors[fieldName];
         delete parent.cached_editors[fieldName];
         
@@ -190,8 +191,28 @@
         } else {
             delete fieldSchema.enum;
         }
+        
+        // layout the new editor
+        if (parent.options.table_row) {
+            var newFieldCls = parent.jsoneditor.getEditorClass(fieldSchema);
+            var newField = parent.editors[fieldName] = parent.jsoneditor.createEditor(newFieldCls, {
+                jsoneditor: parent.jsoneditor,
+                schema: fieldSchema,
+                path: parent.path + '.' + fieldName,
+                parent: parent,
+                compact: true,
+                required: true
+            });
+            newField.preBuild();
 
-        parent.addObjectProperty(fieldName);
+            var holder = parent.theme.getTableCell();
+            parent.editor_holder.insertBefore(holder, nextFieldCnt);
+            newField.setContainer(holder);
+            newField.build();
+            newField.postBuild();
+        } else {
+            parent.addObjectProperty(fieldName);
+        }
         
         var newField = editor.getEditor(path);
         var newValue = enumValues && enumValues.indexOf(oldValue) === -1 ? '' : oldValue;
