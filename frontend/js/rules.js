@@ -124,7 +124,7 @@
         var newValue = eventField.getValue();
         var parts, appId, sectionId, eventId;
         
-        if (!eventField.oldValue || !newValue) {
+        if (!newValue || eventField.oldValue === newValue) {
             return;
         }
         
@@ -158,7 +158,7 @@
         var valuePath = typeField.parent.path + '.value';
         var valueField = editor.getEditor(valuePath);
         var oldEnumValues = '' + (valueField.schema.enum || valueField.schema.enum_options);
-        var newEnumValues = mappingTypeValues[newValue];
+        var newEnumValues = mappingTypeValues[newValue] || '';
         
         // if type was not changed and select options are the same GO OUT
         if (typeField.oldValue === newValue && (oldEnumValues === '' + newEnumValues || oldEnumValues === '' + newEnumValues[0])) {
@@ -215,7 +215,11 @@
         }
         
         var newField = editor.getEditor(path);
-        var newValue = enumValues && enumValues.indexOf(oldValue) === -1 ? '' : oldValue;
+        var newValue = '';
+        if (enumValues) {
+            newValue = enumValues.indexOf(oldValue) === -1 ? '' : oldValue;
+        }
+        
         newField.setValue(newValue);
     };
     var prepareEls = function (els) {
