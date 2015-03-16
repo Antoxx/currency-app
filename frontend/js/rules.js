@@ -230,6 +230,12 @@
         });
         return newEls;
     };
+    var randomId = function () {
+        return +new Date;
+//        return Math.floor((1 + Math.random()) * 0x10000000)
+//            .toString(16)
+//            .substring(1);
+    };
     
     /**
      * Complete new rule with default values
@@ -239,6 +245,10 @@
         var newRules = [];
         if (!editor.savedValue || editor.savedValue.length < rules.length) {
             rules.forEach(function (rule) {
+                if (!rule.id) {
+                    rule.id = randomId();
+                }
+        
                 newRules.push(
                     $.extend(true, {}, predefinedFields, rule)
                 );
